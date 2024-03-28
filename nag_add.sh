@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Nag-add.sh v0.3                              
+# Jason Rhoades (c) 2024 MIT License
+     
 # Prompt for the directory where the configuration files are located
 read -p "Enter the directory path for the cfg files: " cfg_directory
 
@@ -21,7 +24,7 @@ else
     check_command="customer_check_ping"
 fi
 
-# Append to hosts.cfg
+# Append to hosts.cfg; A new file will be created if one does not already exist
 echo "define host {
     use             customer-${sub_service}
     host_name	    $service-${pid}
@@ -32,7 +35,7 @@ echo "define host {
 }
 " >> "${cfg_directory}hosts.cfg"
 
-# Append to services.cfg
+# Append to services.cfg; A new file will be created if one does not already exist
 echo "define service {
     host_name       $service-${pid}
     use             $check_command
@@ -41,17 +44,19 @@ echo "define service {
 }
 " >> "${cfg_directory}services.cfg"
 
-# Update hostgroups.cfg
+# Hostgroup.cfg management 
+# This cfg file is a bit different because each service it not a stazna unto itself 
 
 # File path for hostgroups.cfg
 hostgroups_cfg="${cfg_directory}hostgroups.cfg"
 
-# Check if the hostgroup exists
+# Using "grep -q" is a slightly dirty way of checking to see if a file exists, but if it works it works 
 if grep -q "members" "$hostgroups_cfg" >/dev/null 2<&1 ; then
-    # If hostgroup exists, append the new member
+    # If hostgroup.cfg exists, append the new member
     sed -i "/members/s/$/,$service-${pid}/" $hostgroups_cfg 
 else
-    # If hostgroup doesn't exist, append a new hostgroup definition
+
+# If hostgroup.cfg doesn't exist, generate the initial stanza inside a new file
 echo "define hostgroup {
     hostgroup_name  $sub_service
     alias           Worldspice Customer $subservice
@@ -59,7 +64,8 @@ echo "define hostgroup {
 }
 " >> "$hostgroups_cfg"
 fi
-
+# Yay! We did a thing. 
 echo "Configuration updated successfully in $cfg_directory"
 
+# Future Jason, this is past Jason. Get to adding some some error handling and formatting checks up in this bitch when you get a chance. 
  
