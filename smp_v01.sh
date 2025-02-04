@@ -1,7 +1,7 @@
-#!/bin/bash
+l#!/bin/bash
 
 # Variables for email, drive detection, and test intervals. 
-EMAIL="jason@worldspice.net"
+EMAIL="user@email.com"
 SUBJECT_PASS="All Drives Passed - All Is Well!"
 SUBJECT_FAIL="Failure Detected - Check Drive Results!"
 RESULT_FILE="/tmp/smp_results.txt"
@@ -55,7 +55,7 @@ fi
 # Send the email
 mailx -s "$SUBJECT" "$EMAIL" < "$RESULT_FILE"
 
-# Cleanup
+# Remove temp results file
 rm -f "$RESULT_FILE"
 
 exit 0
