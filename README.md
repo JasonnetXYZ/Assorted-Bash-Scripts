@@ -10,4 +10,4 @@ Telnet_mail.sh - A bash scipt to test email relay servers via Telnet. *No Authen
 
 Pmg_dkim_file_gen.sh - A bash script to generate all of the DKIM DNS records needed to sign email for WS PBXs. 
 
-Sftp-fax-upload-public-version.sh - A bash script to upload PDF faxes to a SFTP server. See file for more details. 
+Sftp-fax-upload-public-version.sh - A bash script to upload PDF faxes to a SFTP server. See commit details on file for more information. 
