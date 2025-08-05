@@ -10,65 +10,82 @@ HOST="#.#.#.#"
 PORT="22"
 #KEY="/location/of/key/file/if/no/password"
 # Local Log File
-LOG_FILE="/var/log/SFTP-upload.log"
+LOG_FILE="/var/log/Fax-to-SFTP-upload.log"
+EMAIL_RECIPIENT="alerts@example.com"
+RETRY_LIMIT=5
+RETRY_DELAY=120  # seconds
 ### Various Voluptuous Variables Vacated ###
+
+# Upload retry added to handle any connectivity issues.
+main() {
+    local file="$1"
+    local filename="$(basename "$file")"
+
+    for ((i=1; i<=RETRY_LIMIT; i++)); do
+        echo "[$(date)] Attempt $i: Uploading $filename to $HOST" >> "$LOG_FILE"
+
+    # Changed lftp to sftp w/sshpass & verbose debugging
+        sshpass -p "$PASS" sftp  -oPort=$PORT "$USER@$HOST" <<EOF >> "$LOG_FILE" 2>&1
+put "$file"
+bye
+EOF
+
+        if [ $? -eq 0 ]; then
+            echo "[$(date)] Upload succeeded: $filename" >> "$LOG_FILE"
+
+    # Rudimentary file check using sshpass, sftp, ls, & awk. ## This would be much easier if I could just checksum the file on the remote server.
+            RSIZE=$(sshpass -p "$PASS" sftp -oPort=$PORT "$USER@$HOST" <<EOF 2>/dev/null | awk '{print $5}'
+ls -l "$filename"
+EOF
+)
+
+            LSIZE=$(stat -c%s "$file")
+
+            if [[ "$RSIZE" -eq "$LSIZE" ]]; then
+                echo "[$(date)] Verified size match for $filename" >> "$LOG_FILE"
+                echo -e "Fax upload successful: $filename\nSize: $LSIZE bytes\nTime: $(date)" | \
+                    mailx -s "Fax Uploaded: $filename" -r "fax-alert@example.com" "$EMAIL_RECIPIENT"
+                return 0
+            else
+                echo "[$(date)] Size mismatch for $filename (local: $LSIZE, remote: $RSIZE)" >> "$LOG_FILE"
+            fi
+        else
+            echo "[$(date)] Upload failed for $filename (attempt $i)" >> "$LOG_FILE"
+        fi
+
+        sleep "$RETRY_DELAY"
+    done
+
+    echo "[$(date)] ERROR: Upload permanently failed after $RETRY_LIMIT attempts: $filename" >> "$LOG_FILE"
+    echo -e "Fax upload FAILED: $filename\nAll $RETRY_LIMIT attempts failed.\nTime: $(date)" | \
+        mailx -s "Fax Upload FAILED: $filename" -r "fax-alert@example.com" "$EMAIL_RECIPIENT"
+    return 1
+}
 
 echo "[$(date)] Watching $FAXDIR for new files..." >> "$LOG_FILE"
 
+# Monitor for new PDF files
 inotifywait -m -e create --format '%f' "$FAXDIR" | while read NEWFILE; do
-    # Check if the new file is a PDF
-    if [[ "$NEWFILE" != *.pdf ]]; then
+    [[ "$NEWFILE" != *.pdf ]] && {
         echo "[$(date)] Non-PDF fax file ignored: $NEWFILE" >> "$LOG_FILE"
         continue
-    fi
+    }
 
     UPLOAD="$FAXDIR/$NEWFILE"
 
-        # Wait for the file to be fully written
+    # Wait for file to finish writing
     PREVSIZE=0
     while true; do
         CURSIZE=$(stat -c%s "$UPLOAD" 2>/dev/null)
         if [[ "$CURSIZE" -eq "$PREVSIZE" && "$CURSIZE" -ne 0 ]]; then
             break
         fi
-	PREVSIZE="$CURSIZE"
+        PREVSIZE="$CURSIZE"
         sleep 5
     done
 
-    echo "[$(date)] New fax PDF uploaded: $UPLOAD" >> "$LOG_FILE"
+    echo "[$(date)] New fax PDF detected: $UPLOAD" >> "$LOG_FILE"
 
-    # Changed lftp to sftp w/sshpass & verbose debugging
-    sshpass -p "$PASS" sftp -v -oPort=$PORT "$USER@$HOST" <<EOF >> "$LOG_FILE" 2>&1
-put "$UPLOAD"
-bye
-EOF
-
-    if [ $? -eq 0 ]; then
-        echo "[$(date)] Uploaded $NEWFILE to $HOST" >> "$LOG_FILE"
-        
-    else
-        echo "[$(date)] Failed to upload $NEWFILE" >> "$LOG_FILE"
-    fi
-
-   # Rudimentary file check using sshpass, sftp, ls, & awk. ## This would be much easier if I could just checksum the file on the remote server. 
-RSIZE=$(sshpass -p "$PASS" sftp -oPort=$PORT "$USER@$HOST" <<EOF | awk -v file="$NEWFILE" '$NF == file { print $5 }'
-ls -l
-bye
-EOF
-)
-
-    LSIZE=$(stat -c%s "$UPLOAD")
-
-    if [[ "$LSIZE" -eq "$RSIZE" ]]; then
-        echo "[$(date)] Verified: $NEWFILE upload successful (size match: $LSIZE bytes)" >> "$LOG_FILE"
-    else
-        echo "[$(date)] WARNING: Size mismatch for $NEWFILE! Local: $LSIZE, Remote: $RSIZE" >> "$LOG_FILE"
-        
-        # Send email alert
-        echo -e "Subject: SFTP Upload Mismatch Alert\n\nFile: $NEWFILE\nLocal Size: $LSIZE\nRemote Size: $RSIZE\nTime: $(date)" | \
-    mailx -s "SFTP Upload Mismatch: $NEWFILE" -r "from-email@example.com" to-email@example.com
-    fi    
-
+    # Upload with retry and email alert
+    main "$UPLOAD" &
 done
-
-
