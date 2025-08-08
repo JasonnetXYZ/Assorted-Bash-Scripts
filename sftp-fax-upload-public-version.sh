@@ -24,7 +24,7 @@ main() {
     for ((i=1; i<=RETRY_LIMIT; i++)); do
         echo "[$(date)] Attempt $i: Uploading $filename to $HOST" >> "$LOG_FILE"
 
-    # Changed lftp to sftp w/sshpass & verbose debugging
+    # Changed lftp to sftp w/sshpass
         sshpass -p "$PASS" sftp  -oPort=$PORT "$USER@$HOST" <<EOF >> "$LOG_FILE" 2>&1
 put "$file"
 bye
